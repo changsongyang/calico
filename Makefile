@@ -25,25 +25,25 @@ PACKAGE_NAME?=github.com/projectcalico/calico
 
 # Determine whether there's a local yaml installed or use dockerized version.
 # Note in order to install local (faster) yaml: "go get github.com/mikefarah/yq.v2"
-YAML_CMD:=$(shell which yq.v2 || echo docker run --rm -i calico/yaml)
+YAML_CMD:=$(shell which yq.v2 || echo docker run --rm -i mikefarah/yq:2.4.2 yq)
 
 # Local directories to ignore when running htmlproofer
 HP_IGNORE_LOCAL_DIRS="/v1.5/,/v1.6/,/v2.0/,/v2.1/,/v2.2/,/v2.3/,/v2.4/,/v2.5/,/v2.6/,/v3.0/"
 
 ##############################################################################
 # Version information used for cutting a release.
-RELEASE_STREAM?=
+RELEASE_STREAM := $(shell cat $(VERSIONS_FILE) | $(YAML_CMD) read - '[0].title' | grep --only-matching --extended-regexp '(v[0-9]+\.[0-9]+)|master')
 
 # Use := so that these V_ variables are computed only once per make run.
-CALICO_VER := $(shell cat $(VERSIONS_FILE) | $(YAML_CMD) read - '"$(RELEASE_STREAM)".[0].title')
-NODE_VER := $(shell cat $(VERSIONS_FILE) | $(YAML_CMD) read - '"$(RELEASE_STREAM)".[0].components.calico/node.version')
-CTL_VER := $(shell cat $(VERSIONS_FILE) | $(YAML_CMD) read - '"$(RELEASE_STREAM)".[0].components.calicoctl.version')
-CNI_VER := $(shell cat $(VERSIONS_FILE) | $(YAML_CMD) read - '"$(RELEASE_STREAM)".[0].components.calico/cni.version')
-KUBE_CONTROLLERS_VER := $(shell cat $(VERSIONS_FILE) | $(YAML_CMD) read - '"$(RELEASE_STREAM)".[0].components.calico/kube-controllers.version')
-POD2DAEMON_VER := $(shell cat $(VERSIONS_FILE) | $(YAML_CMD) read - '"$(RELEASE_STREAM)".[0].components.flexvol.version')
-DIKASTES_VER := $(shell cat $(VERSIONS_FILE) | $(YAML_CMD) read - '"$(RELEASE_STREAM)".[0].components.calico/dikastes.version')
-FLANNEL_MIGRATION_VER := $(shell cat $(VERSIONS_FILE) | $(YAML_CMD) read - '"$(RELEASE_STREAM)".[0].components.calico/flannel-migration-controller.version')
-TYPHA_VER := $(shell cat $(VERSIONS_FILE) | $(YAML_CMD) read - '"$(RELEASE_STREAM)".[0].components.typha.version')
+CALICO_VER := $(shell cat $(VERSIONS_FILE) | $(YAML_CMD) read - '[0].title')
+NODE_VER := $(shell cat $(VERSIONS_FILE) | $(YAML_CMD) read - '[0].components.calico/node.version')
+CTL_VER := $(shell cat $(VERSIONS_FILE) | $(YAML_CMD) read - '[0].components.calicoctl.version')
+CNI_VER := $(shell cat $(VERSIONS_FILE) | $(YAML_CMD) read - '[0].components.calico/cni.version')
+KUBE_CONTROLLERS_VER := $(shell cat $(VERSIONS_FILE) | $(YAML_CMD) read - '[0].components.calico/kube-controllers.version')
+POD2DAEMON_VER := $(shell cat $(VERSIONS_FILE) | $(YAML_CMD) read - '[0].components.flexvol.version')
+DIKASTES_VER := $(shell cat $(VERSIONS_FILE) | $(YAML_CMD) read - '[0].components.calico/dikastes.version')
+FLANNEL_MIGRATION_VER := $(shell cat $(VERSIONS_FILE) | $(YAML_CMD) read - '[0].components.calico/flannel-migration-controller.version')
+TYPHA_VER := $(shell cat $(VERSIONS_FILE) | $(YAML_CMD) read - '[0].components.typha.version')
 
 ##############################################################################
 
@@ -74,7 +74,7 @@ _site build: bin/helm
 
 ## Clean enough that a new release build will be clean
 clean:
-	rm -rf _output _site .jekyll-metadata pinned_versions.yaml
+	rm -rf _output _site .jekyll-metadata pinned_versions.yaml _includes/charts/*/values.yaml
 
 ########################################################################################################################
 # Builds locally checked out code using local versions of libcalico, felix, and confd.
@@ -168,7 +168,6 @@ dev-versions-yaml:
 	export APP_POLICY_VER=`cd ../app-policy && $(TAG_COMMAND)`-amd64; \
 	export POD2DAEMON_VER=`cd ../pod2daemon && $(TAG_COMMAND)`-amd64; \
 	/bin/echo -e \
-"master:\\n"\
 "- title: \"dev-build\"\\n"\
 "  note: \"Developer build\"\\n"\
 "  components:\\n"\
@@ -214,10 +213,6 @@ kubeval: _site
 	rm filtered.out
 
 helm-tests: vendor bin/helm values.yaml
-ifndef RELEASE_STREAM
-	# Default the version to master if not set
-	$(eval RELEASE_STREAM = master)
-endif
 	mkdir -p .go-pkg-cache && \
 		docker run --rm \
 		--net=host \
@@ -274,7 +269,7 @@ release: release-prereqs
 	@echo ""
 	@echo "Release build complete. Next, push the release."
 	@echo ""
-	@echo "  make RELEASE_STREAM=$(RELEASE_STREAM) release-publish"
+	@echo "  make release-publish"
 	@echo ""
 
 ## Produces a git tag for the release.
@@ -334,9 +329,6 @@ endif
 
 # release-prereqs checks that the environment is configured properly to create a release.
 release-prereqs:
-ifndef RELEASE_STREAM
-	$(error RELEASE_STREAM is undefined - run using make release RELEASE_STREAM=vX.Y)
-endif
 	@if [ $(CALICO_VER) != $(NODE_VER) ]; then \
 		echo "Expected CALICO_VER $(CALICO_VER) to equal NODE_VER $(NODE_VER)"; \
 		exit 1; fi
@@ -354,7 +346,7 @@ RELEASE_DIR_BIN?=$(RELEASE_DIR)/bin
 # Determine where the manifests live. For older versions we used
 # a different location, but we still need to package them up for patch
 # releases.
-DEFAULT_MANIFEST_SRC=./_site/$(RELEASE_STREAM)/manifests
+DEFAULT_MANIFEST_SRC=./_site/manifests
 OLD_VERSIONS := v3.0 v3.1 v3.2 v3.3 v3.4 v3.5 v3.6
 ifneq ($(filter $(RELEASE_STREAM),$(OLD_VERSIONS)),)
 DEFAULT_MANIFEST_SRC=./_site/$(RELEASE_STREAM)/getting-started/kubernetes/installation
@@ -450,7 +442,7 @@ $(RELEASE_DIR_BIN)/%:
 ###############################################################################
 # Utilities
 ###############################################################################
-HELM_RELEASE=helm-v2.11.0-linux-amd64.tar.gz
+HELM_RELEASE=helm-v2.16.3-linux-amd64.tar.gz
 bin/helm:
 	mkdir -p bin
 	$(eval TMP := $(shell mktemp -d))
@@ -459,15 +451,12 @@ bin/helm:
 	mv $(TMP)/linux-amd64/helm bin/helm
 
 .PHONY: values.yaml
-values.yaml:
-ifndef RELEASE_STREAM
-	# Default the version to master if not set
-	$(eval RELEASE_STREAM = master)
-endif
+values.yaml: _includes/charts/calico/values.yaml _includes/charts/tigera-operator/values.yaml
+_includes/charts/%/values.yaml: _plugins/values.rb _plugins/helm.rb _data/versions.yml
 	docker run --rm \
 	  -v $$PWD:/calico \
 	  -w /calico \
-          ruby:2.5 ruby ./hack/gen_values_yml.rb $(RELEASE_STREAM) > _includes/$(RELEASE_STREAM)/charts/calico/values.yaml
+	  ruby:2.5 ruby ./hack/gen_values_yml.rb --chart $* > $@
 
 ## Create the vendor directory
 vendor: glide.yaml
@@ -497,3 +486,19 @@ help: # Some kind of magic from https://gist.github.com/rcmachado/af3db315e31383
 	{ helpMsg = $$0 }'                                                  \
 	width=20                                                            \
 	$(MAKEFILE_LIST)
+
+DOCS_TEST_CONTAINER=projectcalico/release-test
+.PHONY: release-test-image
+release-test-image:
+	cd release-scripts/tests && docker build -t $(DOCS_TEST_CONTAINER) . && cd -
+
+.PHONY: release-test
+release-test: release-test-image
+	docker run --rm \
+	-v $(PWD):/docs \
+	-e RELEASE_STREAM=$(RELEASE_STREAM) \
+	$(DOCS_TEST_CONTAINER) sh -c \
+	"nosetests . -e "$(EXCLUDE_REGEX)" \
+	-s -v --with-xunit \
+	--xunit-file='/docs/nosetests.xml' \
+	--with-timer $(EXTRA_NOSE_ARGS)"

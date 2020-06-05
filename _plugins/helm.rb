@@ -18,6 +18,11 @@ module Jekyll
     def initialize(tag_name, extra_args, liquid_options)
       super
 
+      @chart = "calico"
+      if extra_args.start_with?("tigera-operator")
+        @chart = "tigera-operator"
+        extra_args.slice! "tigera-operator"
+      end
       @extra_args = extra_args
     end
     def render(context)
@@ -29,26 +34,13 @@ module Jekyll
       t.write(text)
       t.close
 
-      version = context.registers[:page]["version"]
       imageRegistry = context.registers[:page]["registry"]
       imageNames = context.registers[:site].config["imageNames"]
       versions = context.registers[:site].data["versions"]
 
-      # If versions.yml doesn't contain component version info for the requested version,
-      # only log a warning if 'ignoreMissingVersions' is set 'true' in their _config.yaml.
-      @ignoreMissingVersions = context.registers[:site].config["ignoreMissingVersions"]
-      begin
-        vs = parse_versions(versions, version)
-      rescue IndexError
-        if !@ignoreMissingVersions
-          raise
-        else
-          puts "ignoring missing version '#{version}'"
-          return
-        end
-      end
+      vs = parse_versions(versions)
 
-      versionsYml = gen_values(version, vs, imageNames, imageRegistry)
+      versionsYml = gen_values(vs, imageNames, imageRegistry, @chart)
 
       tv = Tempfile.new("temp_versions.yml")
       tv.write(versionsYml)
@@ -56,7 +48,7 @@ module Jekyll
 
       # Execute helm.
       # Set the default etcd endpoint placeholder for rendering in the docs.
-      cmd = """helm template _includes/#{version}/charts/calico \
+      cmd = """helm template _includes/charts/#{@chart} \
         -f #{tv.path} \
         -f #{t.path} \
         --set etcd.endpoints='http://<ETCD_IP>:<ETCD_PORT>'"""

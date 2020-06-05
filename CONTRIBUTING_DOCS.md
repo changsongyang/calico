@@ -11,9 +11,8 @@ The doc contribution process works as follows.
 1. Fork the [Project Calico repo](https://github.com/projectcalico/calico).
 1. Create a branch in your fork off of the master branch.
 1. Give your branch a short but descriptive name.
-1. Make your changes in the `master` folder.
-1. [Build the site locally to make sure it renders as expected](#building-the-doc-site-locally).
-1. [Check for broken links](#checking-for-broken-links).
+1. Preview your changes to make sure they render as expected. You can either [build the site locally](#building-the-doc-site-locally) or go directly to the "submit a pull request" to [build the site with the Project Calico CI/CD system](#previewing-the-changes-from-cicd).
+1. Check for broken links. You can either [check for broken links](#checking-for-broken-links) in your local environment or submit a pull request and use the output of the Semaphore job.
 1. Submit a pull request (PR) against the master branch of the [Project Calico repo](https://github.com/projectcalico/calico).
 1. If you haven't already signed our contributer agreement, GitHub will prompt you to do so (required).
 1. Request a review from one or more Calico maintainers.
@@ -29,7 +28,9 @@ The doc contribution process works as follows.
 We also encourage you to review [Doc site organization](#doc-site-organization), [Organizational changes](#organizational-changes), [Link syntax](#link-syntax), and [RELEASING.md](RELEASING.md) for additional information.
 
 
-## Building the doc site locally
+## Previewing your changes
+
+### Building the doc site locally
 
 We use GitHub Pages and Jekyll to serve and build our site. While there are [several ways to build the site locally](https://help.github.com/articles/setting-up-your-github-pages-site-locally-with-jekyll/), we recommend using our Docker image and the Makefile in the root of the repo. These will allow you to build the site with a single command.
 
@@ -41,13 +42,18 @@ Navigate into the root of the repo and issue the following command from a termin
 make serve
 ```
 
+
 Once the build completes, it returns a URL as the value of `Server address:`. Copy and paste this URL into your browser to view the site.
 
-> **Note**: To view the changes that you've made in the master branch, select **nightly** from the **Version** list box.
+> **Note**: To view the changes that you've made in the master branch, select **nightly** from the **Releases** page.
 
 > **Pro tip**: Jekyll can take a while to render every page. To speed up builds, a supplemental `_config_dev.yml` exists which excludes all directories except `master`. You can include it in your builds as follows `jekyll serve --config _config.yml,_config_dev.yml`. Alternatively, you can pass enable it in `make` using the following environment variable `DEV=true make serve`.
 
+### Previewing the changes from CI/CD
 
+The Project Calico CI/CD system will generate a site preview automatically with every docs change. An automated response to the PR will indicate "Deploy preview for calico ready!" and provide a link to the preview. If your change is minor and you are not a regular contributor to the project, this method may be easier than building the doc site locally.
+
+**Note** To view the changes you've made to the master branch, select **nightly** from the **Releases** page. 
 
 ## Checking for broken links
 
@@ -178,14 +184,14 @@ To link to a page not named `index.md`, omit the closing slash. To link to a pag
 | `/getting-started/kubernetes/troubleshooting` | `/getting-started/kubernetes/troubleshooting.md`  |
 
 
-### `site.url`, `site.baseurl`, and the `page.version` variable
+### `site.url`, `site.baseurl`, and `absolute_url`
 
 **`site.baseurl`**
 
 To create clickable links to other doc site content, use links prefixed with: `{{ site.baseurl }}`. For example:
 
 ```
-[Get started]({{ site.baseurl }}/{{ page.version }}/getting-started/)
+[Get started]({{ site.baseurl }}/getting-started/)
 ```
 
 Will render as:
@@ -194,16 +200,14 @@ Will render as:
 <a href="/v3.8/getting-started/">Getting started</a>
 ```
 
-The `site.baseurl` prefix is not strictly required, but allows greater portability if our docs move in the future.
+**`absolute_url`**
 
-**`site.url`**
+The `absolute_url` filter must be used whenever you are not creating a clickable `<a href='...'>` element, but instead are showing the user a URL to copy locally. A common example is downloading manifests or showing a user how to `kubectl apply -f https://...` them.
 
-The `site.url` prefix must be used whenever you are not creating a clickable `<a href='...'>` element, but instead are showing the user a URL to copy locally. A common example is downloading manifests or showing a user how to `kubectl apply -f https://...` them.
-
-For absolute links, use `{{ site.url }}`. For example:
+For absolute links, use `{{ "/path" | absolute_url }}`. For example:
 
 ```
-kubectl apply -f `{{ site.url }}/{{ page.version }}/manifests/calicoctl.yaml`
+kubectl apply -f `{{ "/manifests/calicoctl.yaml" | absolute_url }}`
 ```
 
 Will render as:
@@ -212,11 +216,19 @@ Will render as:
 kubectl apply -f `https://docs.tigera.io/v3.8/manifests/calicoctl.yaml`
 ```
 
-**page.version**
+**`site.url`**
 
-Most links should include the prefix `{{ page.version }}`, as seen in the above examples. This allows the content to port across multiple versions without link breakage.
+This renders as the top-level site authority string, without any version prefixes.  Use this when you are showing the user a URL to copy, but want to specify the path portion verbatim, without Jekyll adding any page version information.  For example, if you need to link to a hard-coded version of a page:
 
-`page.version` is automatically inherited from `_config.yml` for the current page's directory.
+```
+kubectl apply -f `{{site.url}}/v3.4/manifests/calicoctl.yaml`
+```
+
+Will render as:
+
+```
+kubectl apply -f `https://docs.tigera.io/v3.4/manifests/calicoctl.yaml`
+```
 
 ### Case sensitivity
 
